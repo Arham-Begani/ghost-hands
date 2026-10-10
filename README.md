@@ -1,14 +1,34 @@
-# Ghost Hands 👻🖱️
+<p align="center">
+  <img src="docs/banner.png" alt="Ghost Hands: a glowing ghost cursor gliding toward a target with a numbered caption" width="100%">
+</p>
 
-**Ask how. Watch it happen on your screen. Then do it yourself.**
+<p align="center">
+  <b>Ask how. Watch it happen on your screen. Then do it yourself.</b><br>
+  Ask "how do I ___ in this app?" A ghost cursor does it on your real Windows screen at human speed,<br>
+  narrating every step, then coaches you through doing it yourself.
+</p>
 
-Ask "how do I ___ in this app?" A ghost cursor does it on your real Windows screen at human speed, narrating every step, then coaches you through doing it yourself.
+<p align="center">
+  <a href="https://ghost-hands-six.vercel.app"><b>Website</b></a> ·
+  <a href="https://ghost-hands-six.vercel.app/#demo"><b>Demo video</b></a> ·
+  <a href="#how-to-run-windows-1011-python-311-an-openai-api-key"><b>Run it</b></a> ·
+  <a href="#how-it-works"><b>How it works</b></a>
+</p>
 
-**Site:** https://ghost-hands-six.vercel.app · **Demo video:** https://ghost-hands-six.vercel.app/#demo
+<p align="center">
+  <img alt="GPT-6.1 Sol computer use" src="https://img.shields.io/badge/GPT--6.1_Sol-computer_use-8B7CFF?logo=openai&logoColor=white">
+  <img alt="OpenAI speech" src="https://img.shields.io/badge/OpenAI-STT_%2B_TTS-3EE7FF?logo=openai&logoColor=white">
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10_%7C_11-0078D6?logo=windows&logoColor=white">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white">
+  <img alt="PyQt6" src="https://img.shields.io/badge/PyQt6-60_fps_overlay-41CD52?logo=qt&logoColor=white">
+  <img alt="OpenAI DevDay 2026 hackathon" src="https://img.shields.io/badge/OpenAI_DevDay_2026-Bengaluru_hackathon-FFB547">
+</p>
 
-![The ghost mid-step: glowing cursor, live typing chip, numbered caption and the HUD pill](docs/ghost-mid-step.png)
-
-<sub>The overlay mid-step: ghost cursor with glow, live typing chip, a step-numbered caption, and the HUD pill (Step 3 / 6). The overlay is excluded from screen capture, so the model never sees it. This still comes from the overlay's debug "room view" renderer.</sub>
+<p align="center">
+  <img src="docs/hero.gif" alt="Asked to turn on dark mode, the ghost glides through Settings: Personalization, Colors, the mode dropdown, Dark. Each step is captioned, and the theme flips." width="900">
+  <br>
+  <sub>“Turn on dark mode in Windows.” Rendered frame by frame by the real overlay code (<code>ghost/overlay/</code>) over a mock of Settings. The captions are verbatim from a real GPT-6.1 Sol run. The live overlay is excluded from screen capture, so ordinary screen recorders can't see it.</sub>
+</p>
 
 ## The problem
 
@@ -23,6 +43,30 @@ AI agents that "just do it" leave you no better at doing it yourself.
 4. **Safety stop.** Before every click, it reads the UI Automation name under the cursor. Send, Pay, Delete, Submit, Buy, Transfer and similar actions are refused in code, not in the prompt. The ghost parks with an amber lock and says *"Stopped before Send. That one is yours."*
 5. **Grab the mouse to take over.** A deliberate mouse move freezes the run instantly: "You've got it ✋". **Esc** also stops everything.
 
+<table>
+  <tr>
+    <th width="50%">🔒 It never does the scary part</th>
+    <th width="50%">✋ Grab the mouse, it lets go</th>
+  </tr>
+  <tr>
+    <td><img src="docs/handover.gif" alt="The ghost types the manager's email into a Share dialog, then parks on Send with an amber lock: Stopped before Send. That one is yours." width="100%"></td>
+    <td><img src="docs/takeover.gif" alt="Mid-run, the real mouse moves in; the ghost dissolves into particles and a toast says You've got it." width="100%"></td>
+  </tr>
+  <tr>
+    <td>Send, Pay, Delete, Submit… are refused in code, checked against the UI Automation name under the click.</td>
+    <td>A deliberate move of the real mouse freezes the run instantly. You're always in control.</td>
+  </tr>
+  <tr>
+    <th colspan="2">🎯 Your turn (F9): it coaches you through the same path</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/coach.gif" alt="Pulsing numbered rings mark each step; the user's clicks turn them mint, a miss shakes the ring, and it ends with Done. You did it yourself." width="720"></td>
+  </tr>
+  <tr>
+    <td colspan="2">Rings replay the last run from <code>runs/LAST</code>. It waits for <i>your</i> real click within 45 px: a hit goes mint, a miss shakes the ring. No AI is involved in this part.</td>
+  </tr>
+</table>
+
 ## Built on OpenAI DevDay 2026
 
 - **GPT-6.1 Sol + the computer-use tool** (Responses API, `tools=[{"type":"computer"}]`). The model sees screenshots and returns batched actions with short commentary, which become the captions.
@@ -32,13 +76,21 @@ AI agents that "just do it" leave you no better at doing it yourself.
 
 ## How it works
 
+```mermaid
+flowchart LR
+    ask(["F8 voice / F7 text"]) --> shot["Screenshot<br/>(mss, ≤1440 px)"]
+    shot --> model["GPT-6.1 Sol<br/>computer use"]
+    model -->|"actions + commentary"| guard{"Guard: UI Automation<br/>name under (x, y)"}
+    guard -->|"Send / Pay / Delete…"| stop["🔒 HandOver: stop"]
+    guard -->|"safe"| ghost["Overlay: ghost glides,<br/>caption + cue"]
+    ghost -->|"ack"| exec["Executor: the real<br/>click / type"]
+    exec --> tts["TTS narrates"] --> shot
+    exec --> log[("runs/&lt;id&gt;/steps.json")]
+    log --> coach["F9: coach rings"]
+    log --> replay["F10: replay, no AI"]
 ```
- F8 voice / F7 text ──▶ brain thread: screenshot (mss) ──▶ GPT-6.1 Sol computer-use ──▶ actions + captions
-   guard: UI Automation name under (x,y) matches Send/Pay/Delete…? ──▶ HandOver, stop
-   GhostAction ──▶ Qt overlay (60 fps, click-through, capture-excluded) glides + captions ──▶ ack
-   executor (pyautogui) performs the real click/type ──▶ TTS speaks ──▶ new screenshot ──▶ loop
-   every step is logged to runs/<id>/steps.json ──▶ F9 coach rings · F10 replay without AI
-```
+
+One Python process, two threads. The brain thread runs the computer-use loop. The Qt thread draws the overlay at 60 fps. They only talk through two queues defined in [`ghost/contracts.py`](ghost/contracts.py). The ghost always arrives and acks *before* the real input fires, which is why it looks like the ghost is doing the clicking.
 
 ### Engineering worth a look
 
