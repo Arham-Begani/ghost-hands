@@ -345,6 +345,7 @@ class Overlay(QWidget):
         screen = QRectF(0, 0, self.W, self.H)
         target = QPointF(self.W / 2, s(16) + s(23))
         self.splash = self._Splash(text, now, screen, target, lambda: self.hud.set_task(text, self.now()))
+        self.hud.set_state("thinking", "", now, 0, 0)
 
     def on_action(self, a: GhostAction, now: float) -> None:
         self.ensure_ghost(now)

@@ -25,6 +25,7 @@ except Exception:
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.window=false")
 
+sys.setswitchinterval(0.001)       # keep the Qt thread responsive while brain/voice threads work
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s",
                     datefmt="%H:%M:%S")
 log = logging.getLogger("ghost.main")
