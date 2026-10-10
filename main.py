@@ -65,11 +65,25 @@ def main() -> int:
     from PyQt6.QtWidgets import QApplication
 
     from ghost.overlay.app import Overlay
+    # Hang watchdog: a C thread (works even if the GIL is stuck) dumps every
+    # thread's stack to runs/hang.log if the Qt loop stalls for > 6 s.
+    import faulthandler
+    os.makedirs("runs", exist_ok=True)
+    hang_log = open("runs/hang.log", "a", buffering=1)
+    faulthandler.enable(file=hang_log, all_threads=True)    # native crashes too
+
+    def pet() -> None:
+        faulthandler.cancel_dump_traceback_later()
+        faulthandler.dump_traceback_later(6, repeat=False, file=hang_log)
     signal.signal(signal.SIGINT, signal.SIG_DFL)          # Ctrl+C kills the overlay instantly
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     overlay = Overlay(to_overlay, to_brain)
     overlay.show()
+    from PyQt6.QtCore import QTimer as _QTimer
+    _pet = _QTimer(overlay)
+    _pet.timeout.connect(pet)
+    _pet.start(1000)
 
     if kind == "real":
         # Importing openai takes ~5 s here: warm the brain + voice off the Qt thread
