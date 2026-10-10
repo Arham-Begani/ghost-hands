@@ -1,0 +1,14 @@
+openai>=3.28
+python-dotenv
+mss
+pillow
+numpy
+pyautogui
+pyperclip
+pynput
+PyQt6
+sounddevice
+soundfile
+uiautomation
+comtypes
+pyttsx3
