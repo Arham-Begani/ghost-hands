@@ -255,6 +255,10 @@ class Overlay(QWidget):
         if isinstance(ev, MicLevel):
             self.hud.mic_level(ev.level, now)
             return
+        if self.coach is not None and self.coach.active and (
+                isinstance(ev, (GhostAction, TaskHeard, HandOver))
+                or (isinstance(ev, Status) and ev.state in ("listening", "thinking", "acting", "replay"))):
+            self.coach.stop()
         if isinstance(ev, GhostAction):
             self.on_action(ev, now)
         elif isinstance(ev, Status):
@@ -469,6 +473,8 @@ class Overlay(QWidget):
 
     def layout(self, now: float, dt: float) -> None:
         """Stack [typing chip, caption] at +28/+28 from the ghost, flipping to stay on screen."""
+        if self.coach is not None and self.coach.active:
+            return
         cur = self.cursor.pos
         chip = self.cursor.chip_size(now)
         cap = self.captions.current
