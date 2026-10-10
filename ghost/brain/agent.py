@@ -344,7 +344,11 @@ class _Run:
             sy = int(round(px / 100.0)) or (1 if px > 0 else -1)
         elif t == "type":
             text = _g(act, "text", "") or ""
-            x, y = self.last_xy or (self.sw // 2, self.sh // 2)
+            try:
+                fp = self.guard.focused_point()  # ghost hovers the box being typed into
+            except Exception:
+                fp = None
+            x, y = fp or self.last_xy or (self.sw // 2, self.sh // 2)
         elif t == "keypress":
             keys = [str(k) for k in (_g(act, "keys", None) or [])]
             x, y = self.last_xy or (self.sw // 2, self.sh // 2)

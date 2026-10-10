@@ -168,6 +168,24 @@ def focused_name() -> str:
     return r if ok else ""
 
 
+def focused_point() -> tuple[int, int] | None:
+    """Where the caret lives: a point inside the focused element, if it's a
+    sensible size (a text box, not a whole window). None otherwise."""
+    def fn(auto):
+        c = auto.GetFocusedControl()
+        if not c:
+            return None
+        r = c.BoundingRectangle
+        w, h = r.right - r.left, r.bottom - r.top
+        sw = ctypes.windll.user32.GetSystemMetrics(0)
+        sh = ctypes.windll.user32.GetSystemMetrics(1)
+        if w <= 4 or h <= 4 or w > sw * 0.8 or h > sh * 0.5:
+            return None
+        return (r.left + min(48, w // 4), r.top + h // 2)
+    ok, r = uia_call(fn)
+    return r if ok else None
+
+
 def warm() -> None:
     """Start the UIA thread and pay its ~0.5 s init cost off the critical path."""
     threading.Thread(target=lambda: uia_call(lambda auto: None, 3.0), daemon=True).start()
@@ -178,6 +196,7 @@ def warm() -> None:
 # --------------------------------------------------------------------------
 _MOVE_PX = 60
 _WINDOW_S = 0.4
+_TELEPORT_PX = 150
 _POLL_PX = 30
 _POLL_GRACE_S = 0.35
 
@@ -234,12 +253,15 @@ def _on_move(x, y, injected=False):
         now = time.monotonic()
         d = math.hypot(x - _last[0], y - _last[1])
         _last = (x, y)
+        if d > _TELEPORT_PX:            # a hand makes many small deltas; a jump is a resync
+            return
         _recent.append((now, d))
         while _recent and now - _recent[0][0] > _WINDOW_S:
             _recent.popleft()
         total = sum(px for _, px in _recent)
-    if total > _MOVE_PX:
-        _takeover(f"moved {total:.0f}px")
+        n = len(_recent)
+    if total > _MOVE_PX and n >= 3:
+        _takeover(f"moved {total:.0f}px in {n} events, now at ({x},{y})")
 
 
 def _on_click(x, y, button, pressed, injected=False):

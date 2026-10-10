@@ -98,6 +98,9 @@ def main() -> int:
         text = args[i + 1] if i + 1 < len(args) else ""
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(2000, lambda: overlay.submit_task(text))
+    if "--replay" in args:          # same as pressing F10
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2500, lambda: overlay.commands.put("f10"))
     if selftest:
         from ghost.overlay.selftest import run_selftest
         run_selftest(overlay, selftest)

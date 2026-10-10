@@ -105,6 +105,8 @@ class RunLog:
             self.data["ok"] = bool(ok)
             self.data["summary"] = summary or ""
             self._write()
+            if not self.data["steps"]:      # an empty run must never replace the F9/F10 run
+                return
             with open(os.path.join(ROOT, contracts.LAST_RUN_FILE), "w", encoding="utf-8") as f:
                 f.write(self.run_dir)
 
