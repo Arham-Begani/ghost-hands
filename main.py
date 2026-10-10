@@ -3,6 +3,7 @@
     python main.py            real brain if it imports, else the scripted fake brain
     python main.py --fake     force the fake brain (loops the scripted demo)
     python main.py --selftest out_dir   prove capture exclusion + click-through, then exit
+    python main.py --task "open notepad and type hi"   submit a task as if typed in the F7 box
 """
 from __future__ import annotations
 
@@ -84,6 +85,11 @@ def main() -> int:
     except ImportError:
         log.info("hotkeys: not built yet")
 
+    if "--task" in args:            # scripted run, same path as the F7 box (for testing)
+        i = args.index("--task")
+        text = args[i + 1] if i + 1 < len(args) else ""
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2000, lambda: overlay.submit_task(text))
     if selftest:
         from ghost.overlay.selftest import run_selftest
         run_selftest(overlay, selftest)

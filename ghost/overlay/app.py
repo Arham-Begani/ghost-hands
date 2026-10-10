@@ -297,6 +297,8 @@ class Overlay(QWidget):
 
     def on_status(self, ev: Status, now: float) -> None:
         st = ev.state
+        if st == "idle" and self.hud.state in ("error", "aborted") and self.idle_at is not None:
+            return          # let the calm error / "You've got it" breathe; idle_at returns to rest
         self.hud.set_state(st, ev.text, now, ev.step, ev.total)
         self.cursor.thinking = st == "thinking"
         if st != "error":
