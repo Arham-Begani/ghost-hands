@@ -81,6 +81,11 @@ class Error:
     text: str
 
 
+@dataclass
+class MicLevel:            # voice.py while recording, ~30 Hz; overlay mic bar
+    level: float          # 0..1 (RMS, already smoothed / normalised)
+
+
 # --------------------------------------------------------------------------
 # OVERLAY -> BRAIN   (put on `to_brain`)
 # --------------------------------------------------------------------------
