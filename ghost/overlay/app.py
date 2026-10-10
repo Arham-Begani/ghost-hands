@@ -112,6 +112,7 @@ class Overlay(QWidget):
             log.exception("coach mode unavailable")
             self.coach = None
         self.frozen_at: float | None = None      # selftest: freeze the clock
+        self.quit_after_run = False              # main --exit-after-run (recordings)
 
         self._t_prev = clock()
         self._last_rects: list[QRectF] = []
@@ -149,7 +150,9 @@ class Overlay(QWidget):
             with grab() as sct:
                 shot = sct.grab(sct.monitors[1])
             img = QImage(bytes(shot.bgra), shot.width, shot.height, QImage.Format.Format_ARGB32).copy()
-            self.render(img, QPoint(0, 0))
+            p = QPainter(img)
+            self.paint_layers(p, self.now())
+            p.end()
             self._snap_n += 1
             img.save(os.path.join(self._snap_dir, f"snap{self._snap_n:03d}.png"))
         except Exception:
@@ -407,7 +410,20 @@ class Overlay(QWidget):
         self.captions.set(ev.reason, 0, now, accent=T.AMBER, badge="lock")
         self.hud.set_state("handover", "", now)
 
+    def _maybe_quit(self) -> None:
+        if self.quit_after_run:
+            QTimer.singleShot(7000, self.finish)
+
+    def finish(self) -> None:
+        """Finalize any recording first, then leave (Qt's quit path can take the process down)."""
+        rec = getattr(self, "recorder", None)
+        if rec is not None:
+            rec.stop()
+        logging.shutdown()
+        os._exit(0)
+
     def on_finished(self, ev: RunFinished, now: float) -> None:
+        self._maybe_quit()
         c = self.cursor
         c.thinking = False
         if ev.ok:
@@ -429,6 +445,7 @@ class Overlay(QWidget):
             self.idle_at = now + 6.0
 
     def dissolve(self, now: float) -> None:
+        self._maybe_quit()
         c = self.cursor
         if c.visible:
             pos = QPointF(c.pos) + QPointF(s(8), s(14))
@@ -528,8 +545,20 @@ class Overlay(QWidget):
 
     def paintEvent(self, e) -> None:
         t0 = clock()
-        now = self.now()
         p = QPainter(self)
+        self.paint_layers(p, self.now())
+        p.end()
+        if self._fps_dbg:
+            self._fps_n += 1
+            self._paint_ms += (clock() - t0) * 1000
+            if clock() - self._fps_t0 >= 2.0:
+                el = clock() - self._fps_t0
+                print(f"[overlay] {self._fps_n / el:5.1f} fps, paint {self._paint_ms / max(1, self._fps_n):.2f} ms",
+                      flush=True)
+                self._fps_n, self._fps_t0, self._paint_ms = 0, clock(), 0.0
+
+    def paint_layers(self, p: QPainter, now: float) -> None:
+        """Every overlay layer, back to front (also used by the recorder / snapshots)."""
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
@@ -548,12 +577,3 @@ class Overlay(QWidget):
         if self.splash:
             self.splash.paint(p, now)
         self.hud.paint(p, now)
-        p.end()
-        if self._fps_dbg:
-            self._fps_n += 1
-            self._paint_ms += (clock() - t0) * 1000
-            if clock() - self._fps_t0 >= 2.0:
-                el = clock() - self._fps_t0
-                print(f"[overlay] {self._fps_n / el:5.1f} fps, paint {self._paint_ms / max(1, self._fps_n):.2f} ms",
-                      flush=True)
-                self._fps_n, self._fps_t0, self._paint_ms = 0, clock(), 0.0

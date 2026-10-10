@@ -32,10 +32,22 @@ def _monitor(sct) -> dict:
     return sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
 
 
+# Recording mode (main.py sets these): the overlay is left visible to screen
+# recorders and hides itself from capture only while the brain takes a shot.
+before_grab = None
+after_grab = None
+
+
 def _grab(region: dict | None = None) -> Image.Image:
-    with _MSS() as sct:                      # mss is not thread-safe: one per call
-        shot = sct.grab(region or _monitor(sct))
-        return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    if before_grab:
+        before_grab()
+    try:
+        with _MSS() as sct:                      # mss is not thread-safe: one per call
+            shot = sct.grab(region or _monitor(sct))
+            return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    finally:
+        if after_grab:
+            after_grab()
 
 
 def _png(img: Image.Image) -> bytes:

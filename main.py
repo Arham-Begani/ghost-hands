@@ -4,6 +4,8 @@
     python main.py --fake     force the fake brain (loops the scripted demo)
     python main.py --selftest out_dir   prove capture exclusion + click-through, then exit
     python main.py --task "open notepad and type hi"   submit a task as if typed in the F7 box
+    GH_RECORD=demo.mp4 python main.py ...   record a demo video (screen + ghost + voice)
+    --exit-after-run    quit 7 s after the run ends (for recordings)
 """
 from __future__ import annotations
 
@@ -94,6 +96,8 @@ def main() -> int:
             try:
                 start_brain()
                 from ghost.brain import voice  # noqa: F401
+                if getattr(overlay, "recorder", None) is not None:
+                    overlay.recorder.hook_voice()
             except Exception:
                 log.exception("brain failed to start")
         threading.Thread(target=boot, name="brain-boot", daemon=True).start()
@@ -107,6 +111,15 @@ def main() -> int:
     except ImportError:
         log.info("hotkeys: not built yet")
 
+    rec = None
+    if os.getenv("GH_RECORD_MODE") == "1":
+        from ghost.overlay.recorder import enable_recording_mode
+        enable_recording_mode(overlay)
+    if os.getenv("GH_RECORD"):        # demo video: screen + overlay + voice -> mp4
+        from ghost.overlay.recorder import Recorder
+        rec = Recorder(overlay, os.environ["GH_RECORD"])
+        overlay.recorder = rec
+    overlay.quit_after_run = "--exit-after-run" in args
     if "--task" in args:            # scripted run, same path as the F7 box (for testing)
         i = args.index("--task")
         text = args[i + 1] if i + 1 < len(args) else ""
@@ -118,7 +131,11 @@ def main() -> int:
     if selftest:
         from ghost.overlay.selftest import run_selftest
         run_selftest(overlay, selftest)
-    return app.exec()
+    code = app.exec()
+    if rec is not None:
+        rec.stop()                      # finalize the mp4 before the process goes away
+    logging.shutdown()
+    os._exit(code)                      # skip interpreter teardown (hook/COM threads can crash it)
 
 
 if __name__ == "__main__":
