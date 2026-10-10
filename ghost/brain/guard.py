@@ -256,6 +256,8 @@ _lock = threading.Lock()
 _armed = False
 _fired = False
 _last = (0, 0)                     # last known cursor position (ours or the user's)
+_anchor = (0, 0)                   # where WE last put the cursor (arm / expect / injected)
+_ANCHOR_PX = 40                    # a takeover must actually move the cursor this far
 _exp_t = 0.0                       # time of last expect()
 _recent: deque = deque()           # (t, px) of real movement
 _listener = None
@@ -274,9 +276,10 @@ def _cursor() -> tuple[int, int]:
 
 def expect(x: int, y: int) -> None:
     """Executor is about to put the cursor at (x, y) itself."""
-    global _last, _exp_t
+    global _last, _exp_t, _anchor
     with _lock:
         _last = (int(x), int(y))
+        _anchor = _last
         _exp_t = time.monotonic()
         _recent.clear()
 
@@ -293,10 +296,11 @@ def _takeover(why: str) -> None:
 
 
 def _on_move(x, y, injected=False):
-    global _last
+    global _last, _anchor
     if injected:
         with _lock:
             _last = (x, y)
+            _anchor = (x, y)
         return
     with _lock:
         if not _armed or _fired:
@@ -313,6 +317,13 @@ def _on_move(x, y, injected=False):
         total = sum(px for _, px in _recent)
         n = len(_recent)
     if total > _MOVE_PX and n >= 3:
+        # Raw hook points can be unclipped (mouse pushed against a screen edge) or
+        # spurious; only a cursor that really left where we put it is a takeover.
+        cx, cy = _cursor()
+        if math.hypot(cx - _anchor[0], cy - _anchor[1]) < _ANCHOR_PX:
+            with _lock:
+                _recent.clear()
+            return
         _takeover(f"moved {total:.0f}px in {n} events, now at ({x},{y})")
 
 
@@ -354,11 +365,12 @@ def _ensure_watch() -> None:
 
 def arm() -> None:
     """Start watching for the user grabbing the mouse (call at run start)."""
-    global _armed, _fired, _last, _exp_t
+    global _armed, _fired, _last, _exp_t, _anchor
     _ensure_watch()
     warm()
     with _lock:
         _last = _cursor()
+        _anchor = _last
         _exp_t = time.monotonic()
         _recent.clear()
         _fired = False
