@@ -132,6 +132,7 @@ def main() -> int:
         from ghost.overlay.selftest import run_selftest
         run_selftest(overlay, selftest)
     code = app.exec()
+    log.info("event loop exited with %s", code)
     if rec is not None:
         rec.stop()                      # finalize the mp4 before the process goes away
     logging.shutdown()
