@@ -15,7 +15,10 @@ from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
 from PyQt6.QtGui import QCursor, QGuiApplication, QPainter, QRegion, QSurfaceFormat
 from PyQt6.QtWidgets import QWidget
 
-from ghost.contracts import Error, GhostAction, HandOver, RunFinished, Status, TaskHeard
+from ghost.contracts import (
+    LAST_RUN_FILE, Abort, Error, GhostAction, HandOver, MicLevel, ReplayRun, RunFinished, RunTask, StartListening,
+    Status, StopListening, TaskHeard,
+)
 
 from . import theme as T
 from .theme import s
@@ -98,6 +101,16 @@ class Overlay(QWidget):
         self.handover = None
         self.toasts: list = []
         self.hide_at: float | None = None
+        self.idle_at: float | None = None          # return the HUD to resting
+        self.commands: "queue.Queue[str]" = queue.Queue()   # from the hotkey hook thread
+        from .taskbox import TaskBox
+        self.taskbox = TaskBox(self.submit_task)
+        try:
+            from .coach import Coach
+            self.coach = Coach(self)
+        except Exception:
+            log.exception("coach mode unavailable")
+            self.coach = None
         self.frozen_at: float | None = None      # selftest: freeze the clock
 
         self._t_prev = clock()
@@ -145,6 +158,15 @@ class Overlay(QWidget):
         return self.frozen_at if self.frozen_at is not None else clock()
 
     def drain(self) -> None:
+        while True:
+            try:
+                cmd = self.commands.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                self.on_command(cmd)
+            except Exception:
+                log.exception("hotkey %s failed", cmd)
         for _ in range(64):
             try:
                 ev = self.to_overlay.get_nowait()
@@ -158,8 +180,81 @@ class Overlay(QWidget):
                 if ack is not None:
                     ack.set()
 
+    # ------------------------------------------------------------ hotkeys
+    @property
+    def busy(self) -> bool:
+        return self.hud.state in ("listening", "transcribing", "thinking", "acting", "replay")
+
+    def on_command(self, cmd: str) -> None:
+        now = self.now()
+        log.info("hotkey %s", cmd)
+        coaching = self.coach is not None and self.coach.active
+        if cmd == "esc":
+            self.to_brain.put(Abort("user"))
+            if coaching:
+                self.coach.stop()
+                self.hud.set_state("idle", "", now)
+            self.taskbox.close_box()
+            return
+        if cmd == "f8_down":
+            if self.busy:
+                return
+            if coaching:
+                self.coach.stop()
+            self.reset_run(now)
+            self.hud.set_state("listening", "", now, 0, 0)
+            self.hud.task = ""
+            self.to_brain.put(StartListening())
+        elif cmd == "f8_up":
+            if self.hud.state == "listening":
+                self.hud.set_state("transcribing", "", now)
+                self.to_brain.put(StopListening())
+        elif cmd == "f7":
+            if self.busy:
+                return
+            self.taskbox.open(self.W, self.hud.rect.bottom() + s(18))
+        elif cmd == "f9":
+            if self.busy or self.coach is None:
+                return
+            self.reset_run(now)
+            self.cursor.hide()
+            self.coach.start()
+        elif cmd == "f10":
+            if self.busy:
+                return
+            run_dir = self.last_run()
+            if not run_dir:
+                self.hud.set_state("error", "Nothing to replay", now)
+                self.idle_at = now + 3.0
+                return
+            if coaching:
+                self.coach.stop()
+            self.reset_run(now)
+            self.hud.set_state("replay", "Replaying", now, 0, 0)
+            self.to_brain.put(ReplayRun(run_dir))
+
+    @staticmethod
+    def last_run() -> str:
+        try:
+            with open(LAST_RUN_FILE, encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+    def submit_task(self, text: str) -> None:
+        if self.busy:
+            return
+        if self.coach is not None and self.coach.active:
+            self.coach.stop()
+        self.reset_run(self.now())
+        self.to_brain.put(RunTask(text))
+
+    # ------------------------------------------------------------ brain events
     def handle(self, ev: object) -> None:
         now = self.now()
+        if isinstance(ev, MicLevel):
+            self.hud.mic_level(ev.level, now)
+            return
         if isinstance(ev, GhostAction):
             self.on_action(ev, now)
         elif isinstance(ev, Status):
@@ -171,9 +266,11 @@ class Overlay(QWidget):
         elif isinstance(ev, RunFinished):
             self.on_finished(ev, now)
         elif isinstance(ev, Error):
-            self.hud.set_state("error", "Error", now)
-            self.hud.flash(ev.text, now, 6.0)
+            self.hud.set_state("error", "Hmm", now)
+            self.hud.flash(ev.text, now, 5.0, then="")
             self.cursor.thinking = False
+            self.hide_at = now + 1.5
+            self.idle_at = now + 5.5
         else:
             log.warning("overlay: unknown event %r", ev)
 
@@ -191,12 +288,15 @@ class Overlay(QWidget):
         if self.handover:
             self.handover.end = now
         self.hide_at = None
+        self.idle_at = None
         self.hud.note = ""
 
     def on_status(self, ev: Status, now: float) -> None:
         st = ev.state
         self.hud.set_state(st, ev.text, now, ev.step, ev.total)
         self.cursor.thinking = st == "thinking"
+        if st != "error":
+            self.idle_at = None
         if st == "listening":
             self.reset_run(now)
         elif st in ("thinking", "acting", "replay"):
@@ -281,16 +381,19 @@ class Overlay(QWidget):
             if c.visible:
                 self.particles.burst(c.pos, now, [T.MINT, T.MINT, T.CYAN, T.GHOST], n=46, speed=300, up=60)
             self.hud.set_state("done", "", now)
-            self.hud.flash(ev.summary or "Done", now, 3.0, then="F9: your turn")
+            self.hud.flash(ev.summary or "Done", now, 3.5, then="Press F9 to try it yourself")
             self.captions.clear(now)
             self.hide_at = now + 3.2
+            self.idle_at = now + 25.0
         elif self.hud.state == "handover":
             self.hud.flash(ev.summary, now, 4.0)
             self.hide_at = now + 6.0
+            self.idle_at = now + 9.0
         elif self.hud.state != "aborted":
             self.hud.set_state("error", "Stopped", now)
-            self.hud.flash(ev.summary, now, 5.0)
+            self.hud.flash(ev.summary, now, 5.0, then="")
             self.hide_at = now + 4.0
+            self.idle_at = now + 6.0
 
     def dissolve(self, now: float) -> None:
         c = self.cursor
@@ -299,6 +402,7 @@ class Overlay(QWidget):
             self.particles.burst(pos, now, [T.VIOLET, T.CYAN, T.GHOST], n=60, speed=140, life=1.1, up=90,
                                  spread=s(10))
             self.toasts.append(self._Toast("You've got it ✋", pos + QPointF(0, s(70)), now, T.MINT))
+        self.idle_at = now + 3.0
         c.kill()
         self.captions.clear(now)
         if self.handover:
@@ -317,6 +421,20 @@ class Overlay(QWidget):
             self.captions.clear(now)
             if self.handover:
                 self.handover.end = now
+        if self.idle_at is not None and now >= self.idle_at:
+            self.idle_at = None
+            if not self.busy and not (self.coach and self.coach.active):
+                self.hud.set_state("idle", "", now)
+                self.hud.task = ""
+                self.hud.note = ""
+                if self.handover:
+                    self.handover.end = now
+        if self.coach is not None:
+            try:
+                self.coach.update(now, dt)
+            except Exception:
+                log.exception("coach update failed")
+                self.coach.stop()
         self.cursor.update(now, dt)
         self.captions.update(now)
         self.hud.update(now, dt)
@@ -335,6 +453,11 @@ class Overlay(QWidget):
                 self.splash = None
         if self.handover:
             rects += self.handover.rects()
+        if self.coach is not None:
+            try:
+                rects += self.coach.rects(now)
+            except Exception:
+                log.exception("coach rects failed")
         for t in self.toasts:
             rects += t.rects(now)
         region = QRegion()
@@ -377,6 +500,11 @@ class Overlay(QWidget):
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         if self.handover:
             self.handover.paint(p, now)
+        if self.coach is not None:
+            try:
+                self.coach.paint(p, now)
+            except Exception:
+                log.exception("coach paint failed")
         self.captions.paint(p, now)
         self.cursor.paint(p, now)
         self.particles.paint(p, now)

@@ -3,7 +3,6 @@ state label, step counter, task text."""
 from __future__ import annotations
 
 import math
-import random
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QFontMetricsF, QPainter, QPen
@@ -13,14 +12,14 @@ from .theme import s
 
 STATE_STYLE: dict[str, tuple[str, QColor, float]] = {
     # state: (label, dot colour, pulse period s; 0 = steady)
-    "idle": ("Ready", QColor(245, 247, 255, 150), 0),
+    "idle": ("Ghost Hands", T.VIOLET, 3.2),
     "listening": ("Listening", T.CYAN, 1.1),
     "transcribing": ("Hearing you", T.CYAN, 0.8),
     "thinking": ("Thinking", T.VIOLET, 0.9),
     "acting": ("Acting", T.CYAN, 1.6),
     "handover": ("Your call", T.AMBER, 1.2),
     "done": ("Done", T.MINT, 0),
-    "error": ("Error", T.CORAL, 0.7),
+    "error": ("Hmm", T.CORAL, 0),
     "aborted": ("You've got it", T.MINT, 0),
     "coach": ("Your turn", T.CYAN, 1.4),
     "replay": ("Replay", T.VIOLET, 1.4),
@@ -31,17 +30,19 @@ class Hud:
     def __init__(self, screen_w: int) -> None:
         self.screen_w = screen_w
         self.state = "idle"
-        self.label = "Ready"
+        self.label = "Ghost Hands"
         self.step = 0
         self.total = 0
         self.task = ""
         self.note = ""                 # overrides the task slot until note_until
         self.note_until = 0.0
         self.after_note = ""
-        self.hint = "Hold F8 to ask  ·  F7 to type"
+        self.hint = "hold F8 to ask"
         self.change_t0 = 0.0
         self.w = s(320)
         self.mic = [0.0] * 5
+        self.mic_real = 0.0
+        self.mic_real_t = -10.0
         self.f_label = T.font(15, T.SEMI)
         self.f_body = T.font(15)
         self.f_step = T.font(15, T.SEMI)
@@ -60,6 +61,10 @@ class Hud:
             self.total = total
         if state == "idle":
             self.step = self.total = 0
+
+    def mic_level(self, level: float, now: float) -> None:
+        self.mic_real = T.clamp(level)
+        self.mic_real_t = now
 
     def set_step(self, step: int) -> None:
         if step:
@@ -105,9 +110,14 @@ class Hud:
         h = s(46)
         self._rect = QRectF((self.screen_w - self.w) / 2, s(16), self.w, h)
         if self.state == "listening":
+            real = now - self.mic_real_t < 0.4
             for i in range(len(self.mic)):
-                target = random.random() ** 1.6 * (0.6 + 0.4 * math.sin(now * 7 + i))
-                self.mic[i] += (target - self.mic[i]) * min(1.0, dt * 18)
+                if real:   # live mic: centre bars tallest, a little per-bar shimmer
+                    shape = (0.55, 0.85, 1.0, 0.85, 0.55)[i]
+                    target = self.mic_real * shape * (0.8 + 0.2 * math.sin(now * 19 + i * 1.7))
+                else:      # no mic data yet: a gentle idle wave
+                    target = 0.08 + 0.06 * math.sin(now * 3 + i)
+                self.mic[i] += (target - self.mic[i]) * min(1.0, dt * 22)
 
     def _dot_w(self) -> float:
         return s(12) + (s(38) if self.state == "listening" else 0)
