@@ -125,9 +125,35 @@ class Overlay(QWidget):
         self.pump = QTimer(self)
         self.pump.timeout.connect(self.drain)
         self.pump.start(16)
+        # GH_SNAPSHOTS=<dir>: debug-only "room view" stills (mss capture of the apps +
+        # the overlay rendered on top), since real captures can't see the overlay.
+        self._snap_dir = os.getenv("GH_SNAPSHOTS", "")
+        self._snap_n = 0
+        if self._snap_dir:
+            os.makedirs(self._snap_dir, exist_ok=True)
+            self._snap = QTimer(self)
+            self._snap.timeout.connect(self._snapshot)
+            self._snap.start(1500)
         self.topmost = QTimer(self)
         self.topmost.timeout.connect(self._raise_topmost)
         self.topmost.start(3000)
+
+    def _snapshot(self) -> None:
+        if not (self.cursor.visible or self.splash or self.hud.state not in ("idle",)):
+            return
+        try:
+            import mss
+            from PyQt6.QtCore import QPoint
+            from PyQt6.QtGui import QImage
+            grab = getattr(mss, "MSS", None) or mss.mss
+            with grab() as sct:
+                shot = sct.grab(sct.monitors[1])
+            img = QImage(bytes(shot.bgra), shot.width, shot.height, QImage.Format.Format_ARGB32).copy()
+            self.render(img, QPoint(0, 0))
+            self._snap_n += 1
+            img.save(os.path.join(self._snap_dir, f"snap{self._snap_n:03d}.png"))
+        except Exception:
+            log.exception("snapshot failed")
 
     # ------------------------------------------------------------ win32
     def showEvent(self, e) -> None:

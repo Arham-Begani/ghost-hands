@@ -71,10 +71,17 @@ def main() -> int:
     overlay.show()
 
     if kind == "real":
-        try:
-            start_brain()
-        except TypeError:
-            start_brain(to_brain, to_overlay)
+        # Importing openai takes ~5 s here: warm the brain + voice off the Qt thread
+        # so the overlay is alive from the first frame and the first F8 is fast.
+        import threading
+
+        def boot() -> None:
+            try:
+                start_brain()
+                from ghost.brain import voice  # noqa: F401
+            except Exception:
+                log.exception("brain failed to start")
+        threading.Thread(target=boot, name="brain-boot", daemon=True).start()
     else:
         start_brain()
 
