@@ -429,10 +429,10 @@ class _Run:
 
 
 def _focused_name() -> str:
+    """Focused UIA element name via guard's single UIA thread (UIA on short-lived threads segfaults)."""
     try:
-        import uiautomation as auto
-        c = auto.GetFocusedControl()
-        return (c.Name or "") if c else ""
+        from ghost.brain import guard
+        return (guard.focused_name() or "")[:40]
     except Exception:
         return ""
 

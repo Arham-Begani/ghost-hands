@@ -16,9 +16,9 @@ import logging  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import find_dotenv, load_dotenv  # noqa: E402
 
-load_dotenv()
+load_dotenv(find_dotenv(usecwd=True))
 
 from ghost.contracts import GhostAction, to_overlay  # noqa: E402
 

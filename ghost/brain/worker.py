@@ -139,8 +139,8 @@ def _loop() -> None:
 
 def start_brain_thread() -> threading.Thread:
     try:
-        from dotenv import load_dotenv
-        load_dotenv()
+        from dotenv import find_dotenv, load_dotenv
+        load_dotenv(find_dotenv(usecwd=True))
     except Exception:
         pass
     import ghost.brain.agent  # noqa: F401  (sets up runs/brain.log)
