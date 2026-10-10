@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost Hands</title>
+<meta name="description" content="Ask how to do anything in any Windows app. A ghost cursor does it on your real screen, narrating each step, then coaches you to do it yourself. Built on OpenAI computer use.">
+<meta name="theme-color" content="#06070C">
+<meta property="og:title" content="Ghost Hands">
+<meta property="og:description" content="Ask how. Watch it happen on your screen. Then do it yourself.">
+<meta property="og:image" content="poster.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06070C;
+  --bg-2:#0A0C14;
+  --ink:rgba(10,12,20,0.82);
+  --ghost:#F5F7FF;
+  --muted:rgba(245,247,255,0.62);
+  --faint:rgba(245,247,255,0.38);
+  --line:rgba(245,247,255,0.08);
+  --violet:#8B7CFF;
+  --cyan:#3EE7FF;
+  --mint:#4BE3A1;
+  --amber:#FFB547;
+  --coral:#FF5C7A;
+  --glow:linear-gradient(135deg,#8B7CFF,#3EE7FF);
+  --radius:18px;
+  --font:"Segoe UI Variable Display","Segoe UI Variable","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ghost);font-family:var(--font);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
+  background:
+    radial-gradient(900px 520px at 78% -8%,rgba(139,124,255,.16),transparent 60%),
+    radial-gradient(700px 480px at 6% 18%,rgba(62,231,255,.08),transparent 60%),
+    var(--bg)}
+a{color:inherit}
+::selection{background:rgba(139,124,255,.4)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+@media (min-width:720px){.wrap{padding:0 32px}}
+section{padding:96px 0}
+@media (max-width:719px){section{padding:64px 0}}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin:0 0 16px}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+h2{font-size:clamp(28px,4vw,40px);margin-bottom:16px}
+h3{font-size:18px;letter-spacing:-.01em}
+.lede{color:var(--muted);font-size:18px;max-width:620px;margin:0}
+.grad{background:var(--glow);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* glass */
+.glass{position:relative;background:var(--ink);border-radius:var(--radius);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(139,124,255,.55),rgba(62,231,255,.35) 50%,rgba(245,247,255,.06));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;background:rgba(6,7,12,.72);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;text-decoration:none;letter-spacing:-.01em}
+.brand img{width:26px;height:26px}
+.navlinks{display:flex;gap:24px;font-size:14px;color:var(--muted)}
+.navlinks a{text-decoration:none;transition:color .15s}
+.navlinks a:hover{color:var(--ghost)}
+@media (max-width:719px){.navlinks a:not(.gh){display:none}}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 20px;border-radius:999px;font:600 15px/1 var(--font);text-decoration:none;transition:transform .15s,box-shadow .2s,background .2s}
+.btn-primary{background:var(--ghost);color:#0A0C14;box-shadow:0 0 0 1px rgba(255,255,255,.2),0 8px 30px -8px rgba(139,124,255,.6)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 0 0 1px rgba(255,255,255,.3),0 10px 36px -6px rgba(62,231,255,.55)}
+.btn-ghost{color:var(--ghost);border:1px solid rgba(245,247,255,.16)}
+.btn-ghost:hover{background:rgba(245,247,255,.06)}
+.btn:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+
+/* hero */
+.hero{padding:72px 0 88px}
+.hero-grid{display:grid;gap:48px;align-items:center}
+@media (min-width:960px){.hero-grid{grid-template-columns:5fr 6fr}}
+.hero h1{font-size:clamp(44px,7vw,76px);letter-spacing:-.035em;margin-bottom:20px}
+.hero .tag{font-size:clamp(19px,2.2vw,23px);color:var(--ghost);font-weight:500;margin:0 0 16px;line-height:1.4}
+.hero .sub{color:var(--muted);margin:0 0 32px;max-width:460px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:32px}
+.chip{font:500 12px/1 var(--mono);color:var(--muted);padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(245,247,255,.02)}
+
+/* stage (hero demo) */
+.stage{aspect-ratio:16/11;overflow:hidden;padding:0;user-select:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+.app{position:absolute;inset:0;display:flex;flex-direction:column;font-size:12px;color:var(--faint)}
+.app-top{display:flex;align-items:center;gap:6px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dot3{display:flex;gap:6px;margin-right:10px}.dot3 i{width:9px;height:9px;border-radius:50%;background:rgba(245,247,255,.12)}
+.doc-title{color:var(--muted);font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.send{padding:5px 12px;border-radius:999px;background:rgba(62,231,255,.12);color:var(--cyan);font-weight:600;transition:box-shadow .3s,background .3s,color .3s}
+.send.locked{background:rgba(255,181,71,.14);color:var(--amber);box-shadow:0 0 0 2px rgba(255,181,71,.55)}
+.menu{display:flex;gap:2px;padding:6px 10px;border-bottom:1px solid var(--line);position:relative}
+.menu span{padding:4px 8px;border-radius:6px;transition:background .2s,color .2s}
+.menu span.on{background:rgba(139,124,255,.18);color:var(--ghost)}
+.dropdown{position:absolute;top:30px;left:96px;min-width:150px;padding:6px;border-radius:10px;background:rgba(16,18,30,.96);border:1px solid rgba(245,247,255,.1);box-shadow:0 18px 40px -12px rgba(0,0,0,.7);opacity:0;transform:translateY(-4px);transition:opacity .2s,transform .2s;z-index:2}
+.dropdown.open{opacity:1;transform:none}
+.dropdown div{padding:6px 10px;border-radius:6px;color:var(--muted);display:flex;justify-content:space-between}
+.dropdown div.on{background:rgba(62,231,255,.12);color:var(--ghost)}
+.grid{flex:1;display:grid;grid-template-columns:28px repeat(4,1fr);grid-auto-rows:minmax(0,1fr);font-variant-numeric:tabular-nums}
+.grid > div{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 8px;display:flex;align-items:center;white-space:nowrap;overflow:hidden}
+.grid .h{color:var(--muted);font-weight:600;transition:box-shadow .35s}
+.grid.frozen .h{box-shadow:inset 0 -3px 0 var(--mint)}
+.grid .n{justify-content:center;color:rgba(245,247,255,.25)}
+@media (max-width:480px){.grid > div:nth-child(5n){display:none}.grid{grid-template-columns:24px repeat(3,1fr)}}
+.ghost{position:absolute;left:0;top:0;width:30px;height:38px;z-index:5;pointer-events:none;will-change:transform;filter:drop-shadow(0 0 6px rgba(139,124,255,.9)) drop-shadow(0 0 14px rgba(62,231,255,.45))}
+.ghost svg{display:block;width:100%;height:100%;transform-origin:2px 2px;transition:transform .09s}
+.ghost.press svg{transform:scale(.86,.8)}
+.caption{position:absolute;left:0;top:0;z-index:6;display:flex;align-items:center;gap:10px;max-width:min(300px,70%);padding:9px 14px 9px 9px;border-radius:14px;background:var(--ink);border:1px solid rgba(139,124,255,.35);box-shadow:0 12px 30px -10px rgba(0,0,0,.8);font-size:14px;font-weight:600;color:var(--ghost);line-height:1.3;opacity:0;transition:opacity .25s;will-change:transform}
+.caption.show{opacity:1}
+.caption .badge{flex:none;width:22px;height:22px;border-radius:50%;background:var(--glow);color:#0A0C14;font-size:12px;font-weight:700;display:grid;place-items:center}
+.caption.amber{border-color:rgba(255,181,71,.6)}
+.caption.amber .badge{background:var(--amber)}
+.caption.mint{border-color:rgba(75,227,161,.55)}
+.caption.mint .badge{background:var(--mint)}
+.caption .txt::after{content:"";display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:var(--cyan);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.hud{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--ink);border:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap}
+.hud i{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px currentColor;color:var(--cyan)}
+.hud.thinking i{background:var(--violet);color:var(--violet);animation:pulse 1.2s ease-in-out infinite}
+.hud.done i{background:var(--mint);color:var(--mint)}
+.hud.stop i{background:var(--amber);color:var(--amber)}
+.hud b{color:var(--ghost);font-weight:600}
+@keyframes pulse{50%{opacity:.35;transform:scale(.7)}}
+.app-top .hudspace{display:none}
+
+/* video */
+.video{overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
+.video video{width:100%;height:100%;display:block;object-fit:cover;background:#000;border-radius:inherit}
+.soon{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:24px;border-radius:inherit;
+  background:linear-gradient(180deg,rgba(6,7,12,.55),rgba(6,7,12,.85)),url(poster.png) center/cover}
+.video.missing .soon{display:grid}
+.video.missing video{display:none}
+.soon .ring{width:64px;height:64px;margin:0 auto 18px;border-radius:50%;border:2px solid var(--cyan);display:grid;place-items:center;box-shadow:0 0 30px rgba(62,231,255,.35),inset 0 0 20px rgba(139,124,255,.25)}
+.soon .ring::after{content:"";margin-left:5px;border-left:16px solid var(--ghost);border-top:10px solid transparent;border-bottom:10px solid transparent}
+.soon h3{font-size:22px;margin-bottom:6px}
+.soon p{margin:0;color:var(--muted);font-size:15px}
+
+/* steps */
+.steps{display:grid;gap:16px;margin-top:48px;counter-reset:s}
+@media (min-width:720px){.steps{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1040px){.steps{grid-template-columns:repeat(4,1fr)}}
+.step{padding:24px}
+.step .num{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;color:#0A0C14;background:var(--glow);margin-bottom:20px}
+.step.safe .num{background:var(--amber)}
+.step h3{margin-bottom:8px}
+.step p{margin:0;color:var(--muted);font-size:15px}
+.kbd,kbd{font:500 12px/1 var(--mono);padding:4px 7px;border-radius:6px;border:1px solid rgba(245,247,255,.18);border-bottom-width:2px;background:rgba(245,247,255,.05);color:var(--ghost);white-space:nowrap}
+
+/* loop diagram */
+.loop{margin-top:48px;padding:32px}
+.flow{display:grid;gap:12px;align-items:stretch}
+@media (min-width:900px){.flow{grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr}}
+.node{padding:16px;border-radius:12px;border:1px solid var(--line);background:rgba(245,247,255,.025)}
+.node small{display:block;font:500 11px/1.2 var(--mono);color:var(--faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.node b{display:block;font-size:15px;font-weight:600;margin-bottom:4px}
+.node span{display:block;font-size:13px;color:var(--muted);line-height:1.45}
+.node.ai{border-color:rgba(139,124,255,.45);background:rgba(139,124,255,.08)}
+.node.guard{border-color:rgba(255,181,71,.4);background:rgba(255,181,71,.06)}
+.arrow{display:grid;place-items:center;color:var(--faint)}
+.arrow svg{width:22px;height:22px}
+@media (max-width:899px){.arrow svg{transform:rotate(90deg)}}
+.return{margin-top:16px;display:flex;align-items:center;gap:12px;font:500 13px/1.5 var(--mono);color:var(--muted)}
+.return svg{flex:none;width:22px;height:22px;color:var(--cyan)}
+.models{display:grid;gap:16px;margin-top:16px}
+@media (min-width:720px){.models{grid-template-columns:repeat(3,1fr)}}
+.model{padding:20px}
+.model small{font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--cyan)}
+.model b{display:block;margin:10px 0 6px;font-size:17px}
+.model p{margin:0;color:var(--muted);font-size:14px}
+.eng{display:grid;gap:12px 32px;margin:48px 0 0;padding:0;list-style:none}
+@media (min-width:720px){.eng{grid-template-columns:repeat(2,1fr)}}
+.eng li{padding-left:22px;position:relative;color:var(--muted);font-size:15px}
+.eng li::before{content:"";position:absolute;left:0;top:.62em;width:8px;height:8px;border-radius:50%;background:var(--glow)}
+.eng b{color:var(--ghost);font-weight:600}
+
+/* try */
+.try{display:grid;gap:16px;margin-top:48px}
+@media (min-width:900px){.try{grid-template-columns:6fr 5fr}}
+.panel{padding:28px}
+.panel h3{margin-bottom:16px}
+.req{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+pre{margin:0;padding:18px 20px;border-radius:12px;background:rgba(0,0,0,.45);border:1px solid var(--line);overflow-x:auto;font:400 13.5px/1.75 var(--mono);color:var(--ghost)}
+pre .c{color:var(--faint)}
+pre .p{color:var(--cyan);user-select:none}
+.tip{margin-top:20px;padding:14px 16px;border-radius:12px;background:rgba(75,227,161,.07);border:1px solid rgba(75,227,161,.28);font-size:14px;color:var(--muted)}
+.tip b{color:var(--mint)}
+.tip code,p code,li code{font:500 13px var(--mono);color:var(--ghost)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td{padding:13px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td:first-child{width:120px;padding-right:12px}
+tr:last-child td{border-bottom:0}
+td span{color:var(--muted)}
+
+/* safety */
+.safety{display:grid;gap:40px;align-items:center}
+@media (min-width:900px){.safety{grid-template-columns:1fr 1fr}}
+.lockcard{padding:32px;text-align:center}
+.lockring{position:relative;width:120px;height:120px;margin:8px auto 24px;border-radius:50%;display:grid;place-items:center}
+.lockring::before,.lockring::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--amber)}
+.lockring::after{animation:ring 2.2s ease-out infinite}
+@keyframes ring{from{transform:scale(1);opacity:.7}to{transform:scale(1.45);opacity:0}}
+.lockring svg{width:40px;height:40px;color:var(--amber)}
+.quote{display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border-radius:14px;background:var(--ink);border:1px solid rgba(255,181,71,.5);font-weight:600;font-size:16px}
+.quote i{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.words{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:20px}
+.words span{font:500 12px/1 var(--mono);padding:6px 9px;border-radius:6px;color:var(--amber);background:rgba(255,181,71,.08);border:1px solid rgba(255,181,71,.22)}
+.points{list-style:none;padding:0;margin:24px 0 0;display:grid;gap:18px}
+.points li{display:grid;grid-template-columns:28px 1fr;gap:12px;color:var(--muted);font-size:15px}
+.points li b{display:block;color:var(--ghost);font-weight:600;margin-bottom:2px}
+.points svg{width:22px;height:22px;margin-top:2px}
+
+footer{border-top:1px solid var(--line);padding:40px 0 56px;color:var(--faint);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center}
+footer a{color:var(--muted);text-decoration:none}
+footer a:hover{color:var(--ghost)}
+
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none;transition:none}
+  .lockring::after,.hud.thinking i,.caption .txt::after{animation:none}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="favicon.svg" alt="" width="26" height="26">Ghost Hands</a>
+    <div class="navlinks">
+      <a href="#demo">Demo</a>
+      <a href="#how">How it works</a>
+      <a href="#openai">OpenAI</a>
+      <a href="#try">Try it</a>
+      <a class="gh" href="https://github.com/Arham-Begani/ghost-hands">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">For any Windows app</p>
+        <h1><span class="grad">Ghost</span> Hands</h1>
+        <p class="tag">Ask how. Watch it happen on your screen. Then do it yourself.</p>
+        <p class="sub">Say "how do I freeze the top row?" A glowing ghost cursor does it on your real screen at human pace, narrating every step out loud. Then it hands you the mouse and coaches you through doing it yourself.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#demo">Watch the demo</a>
+          <a class="btn btn-ghost" href="#try">Run it yourself</a>
+        </div>
+        <div class="chips">
+          <span class="chip">GPT-6.1 Sol · computer use</span>
+          <span class="chip">gpt-transcribe</span>
+          <span class="chip">gpt-4o-mini-tts</span>
+        </div>
+      </div>
+
+      <div class="glass stage" id="stage" aria-label="Animated illustration: a ghost cursor freezes the top row of a spreadsheet, then stops before pressing Send." role="img">
+        <div class="app" aria-hidden="true">
+          <div class="app-top">
+            <div class="dot3"><i></i><i></i><i></i></div>
+            <div class="doc-title">Sales 2026</div>
+            <div class="send" id="t-send">Send</div>
+          </div>
+          <div class="menu">
+            <span>File</span><span>Edit</span><span id="t-view">View</span><span>Insert</span><span>Format</span>
+            <div class="dropdown" id="dd">
+              <div>Show</div>
+              <div id="t-freeze">Freeze <span>›</span></div>
+              <div>Zoom</div>
+            </div>
+            <div class="dropdown" id="dd2" style="min-width:110px">
+              <div>No rows</div>
+              <div id="t-row">1 row</div>
+              <div>2 rows</div>
+            </div>
+          </div>
+          <div class="grid" id="grid">
+            <div class="n"></div><div class="h">Name</div><div class="h">Month</div><div class="h">Region</div><div class="h">Sales</div>
+            <div class="n">2</div><div>Asha Rao</div><div>Jan</div><div>South</div><div>48,200</div>
+            <div class="n">3</div><div>Dev Mehta</div><div>Jan</div><div>West</div><div>61,450</div>
+            <div class="n">4</div><div>Priya Nair</div><div>Feb</div><div>South</div><div>39,900</div>
+            <div class="n">5</div><div>Kabir Shah</div><div>Feb</div><div>North</div><div>72,300</div>
+            <div class="n">6</div><div>Meera Iyer</div><div>Mar</div><div>East</div><div>55,120</div>
+            <div class="n">7</div><div>Rohan Das</div><div>Mar</div><div>West</div><div>44,780</div>
+          </div>
+        </div>
+        <div class="hud" id="hud" aria-hidden="true"><i></i><span id="hud-state">Listening</span><b id="hud-step"></b></div>
+        <canvas id="trail" aria-hidden="true"></canvas>
+        <div class="ghost" id="ghost" aria-hidden="true">
+          <svg viewBox="0 0 30 38"><path d="M2 2 L2 30 L9.4 23.4 L14.4 34 L19.4 31.7 L14.4 21.3 L24.2 21 Z" fill="#F5F7FF" stroke="#fff" stroke-width="1" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="caption" id="cap" aria-hidden="true"><span class="badge" id="cap-n">1</span><span class="txt" id="cap-t"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEMO -->
+  <section id="demo">
+    <div class="wrap">
+      <p class="eyebrow reveal">Demo</p>
+      <h2 class="reveal">Ninety seconds, one real screen.</h2>
+      <p class="lede reveal">Google Sheets, then Windows Settings, then a task it refuses to finish. No mockups, no slides: the ghost is driving the actual desktop.</p>
+      <div class="glass video reveal" id="video" style="margin-top:40px">
+        <video controls playsinline preload="metadata" poster="poster.png" src="demo.mp4">
+          Your browser can't play this video.
+        </video>
+        <div class="soon">
+          <div>
+            <div class="ring" aria-hidden="true"></div>
+            <h3>Video coming soon</h3>
+            <p>The demo recording lands here after the live session.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how">
+    <div class="wrap">
+      <p class="eyebrow reveal">How it works</p>
+      <h2 class="reveal">It shows you. Then it makes you do it.</h2>
+      <p class="lede reveal">Tutorials happen on someone else's screen. Agents that just do the task leave you no better at it. Ghost Hands does both halves.</p>
+      <div class="steps">
+        <div class="glass step reveal">
+          <div class="num">1</div>
+          <h3>Ask</h3>
+          <p>Hold <kbd>F8</kbd> and say it, or press <kbd>F7</kbd> and type it. "How do I make a bar chart of sales by month?"</p>
+        </div>
+        <div class="glass step reveal">
+          <div class="num">2</div>
+          <h3>The ghost does it</h3>
+          <p>A glowing cursor glides to each real target at human pace, clicks and types there, and narrates every step with a caption and a calm voice.</p>
+        </div>
+        <div class="glass step reveal">
+          <div class="num">3</div>
+          <h3>Your turn</h3>
+          <p>Press <kbd>F9</kbd>. Pulsing rings mark each step. It waits for your real click: hits turn mint, misses shake, and after two misses the ghost shows you again.</p>
+        </div>
+        <div class="glass step safe reveal">
+          <div class="num">4</div>
+          <h3>It never does the scary part</h3>
+          <p>Send, Pay, Delete, Submit: it stops with an amber lock and says <em>"That one is yours."</em> Grab the mouse any time to take over.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPENAI -->
+  <section id="openai">
+    <div class="wrap">
+      <p class="eyebrow reveal">Built on OpenAI</p>
+      <h2 class="reveal">It reads pixels, not APIs.</h2>
+      <p class="lede reveal">So it works in any app on your screen. The loop runs on GPT-6.1 Sol with the computer-use tool in the Responses API.</p>
+
+      <div class="glass loop reveal" role="img" aria-label="Computer-use loop: screenshot, GPT-6.1 Sol returns an ordered actions batch, the guard checks each target, the ghost glides and the real input happens, a new screenshot goes back as computer_call_output.">
+        <div class="flow">
+          <div class="node"><small>01 · see</small><b>Screenshot</b><span>mss capture, scaled to 1440 px wide, overlay excluded</span></div>
+          <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M14 6l6 6-6 6"/></svg></div>
+          <div class="node ai"><small>02 · think</small><b>GPT-6.1 Sol</b><span><code>tools=[{"type":"computer"}]</code> returns a <code>computer_call</code> with ordered <code>actions</code> and commentary</span></div>
+          <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M14 6l6 6-6 6"/></svg></div>
+          <div class="node guard"><small>03 · check</small><b>Guard</b><span>UI Automation name under the point. Send, Pay, Delete? Stop.</span></div>
+          <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M14 6l6 6-6 6"/></svg></div>
+          <div class="node"><small>04 · show</small><b>Ghost glides</b><span>Caption from the commentary, voice from TTS, then the real click</span></div>
+          <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M14 6l6 6-6 6"/></svg></div>
+          <div class="node"><small>05 · log</small><b>Record</b><span>steps.json, target crops and cached voice for replay and coaching</span></div>
+        </div>
+        <div class="return">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+          <span>New screenshot goes back as <code>computer_call_output</code> until there is no <code>computer_call</code> left.</span>
+        </div>
+      </div>
+
+      <div class="models">
+        <div class="glass model reveal"><small>Act</small><b>GPT-6.1 Sol + computer use</b><p>Responses API, ordered action batches, screenshots as <code>computer_call_output</code>. Its commentary becomes the captions.</p></div>
+        <div class="glass model reveal"><small>Listen</small><b>gpt-transcribe</b><p>Push-to-talk speech-to-text with keyword hints, so a noisy room still gets the task right.</p></div>
+        <div class="glass model reveal"><small>Speak</small><b>gpt-4o-mini-tts · marin</b><p>Streamed and steered to a "calm, friendly teacher". Each line is cached so replays need no network.</p></div>
+      </div>
+
+      <ul class="eng">
+        <li><b>Invisible to the model.</b> The overlay uses <code>WDA_EXCLUDEFROMCAPTURE</code>, so the AI never sees the ghost. That needed a GL-composited window, because the flag fails on layered windows.</li>
+        <li><b>Click-through, never steals focus.</b> A transparent, no-activate tool window. Your app keeps the keyboard the whole time.</li>
+        <li><b>60 fps on a laptop iGPU.</b> PyQt6 with prebaked glow pixmaps, cubic-eased arcs and a 22-point comet trail.</li>
+        <li><b>Clicks land exactly.</b> Per-monitor DPI aware, so coordinates line up at 125% and 150% scaling.</li>
+        <li><b>Crash-proof UI Automation.</b> The accessibility probe runs in an isolated helper process.</li>
+        <li><b>Offline safety net.</b> <kbd>F10</kbd> replays the last run exactly, with zero AI calls.</li>
+      </ul>
+      <p class="lede reveal" style="margin-top:32px;font-size:15px">Built in a day with Codex and Claude Code working in parallel: one on the brain, one on the overlay.</p>
+    </div>
+  </section>
+
+  <!-- TRY -->
+  <section id="try">
+    <div class="wrap">
+      <p class="eyebrow reveal">For judges</p>
+      <h2 class="reveal">Try it yourself.</h2>
+      <p class="lede reveal">Five minutes on any Windows machine.</p>
+      <div class="try">
+        <div class="glass panel reveal">
+          <h3>Set up</h3>
+          <div class="req"><span class="chip">Windows 10 / 11</span><span class="chip">Python 3.11+</span><span class="chip">OpenAI API key</span></div>
+<pre><span class="p">&gt; </span>git clone https://github.com/Arham-Begani/ghost-hands
+<span class="p">&gt; </span>cd ghost-hands
+<span class="p">&gt; </span>pip install -r requirements.txt
+<span class="c"># .env</span>
+OPENAI_API_KEY=sk-...
+<span class="p">&gt; </span>python main.py</pre>
+          <div class="tip"><b>No key?</b> <code>python main.py --fake</code> runs a scripted demo of the whole overlay with no API calls.</div>
+        </div>
+        <div class="glass panel reveal">
+          <h3>Hotkeys</h3>
+          <table>
+            <tr><td><kbd>F8</kbd> hold</td><td>Talk. Say the task, release to run.</td></tr>
+            <tr><td><kbd>F7</kbd></td><td>Type the task instead. <span>Good for noisy rooms.</span></td></tr>
+            <tr><td><kbd>F9</kbd></td><td>Your turn. <span>Coach me through the last run.</span></td></tr>
+            <tr><td><kbd>F10</kbd></td><td>Replay the last run. <span>No AI calls.</span></td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Stop everything.</td></tr>
+            <tr><td><span>Move mouse</span></td><td>Take over mid-run.</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAFETY -->
+  <section id="safety">
+    <div class="wrap safety">
+      <div>
+        <p class="eyebrow reveal" style="color:var(--amber)">Safety</p>
+        <h2 class="reveal">The irreversible click is always yours.</h2>
+        <p class="lede reveal">Safety lives in code, not in a prompt the model could talk its way around.</p>
+        <ul class="points">
+          <li class="reveal"><svg viewBox="0 0 24 24" fill="none" stroke="#FFB547" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div><b>Hard stop before every click</b>It reads the UI Automation name under the pointer and refuses Send, Pay, Delete, Submit, Post, Buy, Transfer and friends.</div></li>
+          <li class="reveal"><svg viewBox="0 0 24 24" fill="none" stroke="#4BE3A1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v5M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 11V8a1.5 1.5 0 0 1 3 0v6a7 7 0 0 1-7 7h-.5a7 7 0 0 1-5.6-2.8L4 15.5a1.6 1.6 0 0 1 2.5-2L7 14"/></svg><div><b>Grab the mouse, it lets go</b>Any deliberate move freezes the run instantly: the ghost dissolves and says "You've got it ✋".</div></li>
+          <li class="reveal"><svg viewBox="0 0 24 24" fill="none" stroke="#3EE7FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div><b>Human pace on purpose</b>You can't learn from a blur, and you can always see what it's about to do.</div></li>
+          <li class="reveal"><svg viewBox="0 0 24 24" fill="none" stroke="#8B7CFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg><div><b>Model safety checks are never auto-acknowledged</b>A pending safety check hands control back to you and ends the run.</div></li>
+        </ul>
+      </div>
+      <div class="glass lockcard reveal">
+        <div class="lockring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+        <div class="quote"><i></i>Stopped before Send. That one is yours.</div>
+        <div class="words" aria-label="Refused actions"><span>send</span><span>pay</span><span>delete</span><span>submit</span><span>post</span><span>buy</span><span>transfer</span><span>checkout</span><span>place order</span><span>sign out</span></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="favicon.svg" alt="" width="22" height="22">Ghost Hands</a>
+    <span>OpenAI DevDay Exchange · Bengaluru 2026</span>
+    <a href="https://github.com/Arham-Begani/ghost-hands">github.com/Arham-Begani/ghost-hands</a>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  /* reveal on scroll */
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), {rootMargin: '0px 0px -8% 0px'});
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  /* video fallback */
+  const vbox = document.getElementById('video');
+  const vid = vbox.querySelector('video');
+  const missing = () => vbox.classList.add('missing');
+  vid.addEventListener('error', missing);
+  if (vid.error) missing();
+  vid.addEventListener('loadedmetadata', () => vbox.classList.remove('missing'));
+
+  /* hero ghost */
+  const stage = document.getElementById('stage');
+  const cvs = document.getElementById('trail');
+  const ctx = cvs.getContext('2d');
+  const ghost = document.getElementById('ghost');
+  const cap = document.getElementById('cap'), capT = document.getElementById('cap-t'), capN = document.getElementById('cap-n');
+  const hud = document.getElementById('hud'), hudState = document.getElementById('hud-state'), hudStep = document.getElementById('hud-step');
+  const $ = id => document.getElementById(id);
+  let W = 0, H = 0, dpr = 1;
+  const pos = {x: 0, y: 0};
+  const trail = [];
+  const ripples = [];
+  let moving = false, visible = true, t0 = performance.now();
+
+  function size() {
+    const r = stage.getBoundingClientRect();
+    W = r.width; H = r.height; dpr = Math.min(devicePixelRatio || 1, 2);
+    cvs.width = W * dpr; cvs.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const dd = $('dd'), dd2 = $('dd2'), view = $('t-view'), fr = $('t-freeze');
+    dd.style.left = view.offsetLeft + 'px';
+    dd2.style.left = (view.offsetLeft + dd.offsetWidth - 6) + 'px';
+    dd2.style.top = (dd.offsetTop + fr.offsetTop - 6) + 'px';
+  }
+  function target(id) {
+    const s = stage.getBoundingClientRect(), r = $(id).getBoundingClientRect();
+    return {x: r.left - s.left + Math.min(r.width * 0.45, 26), y: r.top - s.top + r.height * 0.55};
+  }
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function glide(to, ms) {
+    const from = {x: pos.x, y: pos.y};
+    const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy) || 1;
+    const c = {x: (from.x + to.x) / 2 - dy / len * len * 0.12, y: (from.y + to.y) / 2 + dx / len * len * 0.12};
+    moving = true;
+    return new Promise(res => {
+      const st = performance.now();
+      const step = now => {
+        const k = Math.min(1, (now - st) / ms), e = ease(k), u = 1 - e;
+        pos.x = u * u * from.x + 2 * u * e * c.x + e * e * to.x;
+        pos.y = u * u * from.y + 2 * u * e * c.y + e * e * to.y;
+        if (k < 1) requestAnimationFrame(step); else { moving = false; res(); }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+  let typeTok = 0;
+  async function say(n, text, tone) {
+    const tok = ++typeTok;
+    cap.classList.remove('show');
+    await sleep(160);
+    cap.className = 'caption show' + (tone ? ' ' + tone : '');
+    capN.textContent = n;
+    capT.textContent = '';
+    for (let i = 1; i <= text.length; i++) {
+      if (tok !== typeTok) return;
+      capT.textContent = text.slice(0, i);
+      await sleep(35);
+    }
+  }
+  function setHud(state, text, step) {
+    hud.className = 'hud ' + state;
+    hudState.textContent = text;
+    hudStep.textContent = step || '';
+  }
+  async function click(color) {
+    ghost.classList.add('press');
+    ripples.push({x: pos.x, y: pos.y, t: performance.now(), color: color || '62,231,255'});
+    await sleep(110);
+    ghost.classList.remove('press');
+  }
+
+  function place() {
+    const bob = moving ? 0 : Math.sin((performance.now() - t0) / 520) * 2;
+    ghost.style.transform = `translate(${pos.x - 2}px,${pos.y - 2 + bob}px)`;
+    let cx = pos.x + 28, cy = pos.y + 28;
+    const cw = cap.offsetWidth, ch = cap.offsetHeight;
+    if (cx + cw > W - 8) cx = pos.x - 16 - cw;
+    if (cy + ch > H - 8) cy = pos.y - 20 - ch;
+    cap.style.transform = `translate(${Math.max(8, cx)}px,${Math.max(8, cy)}px)`;
+  }
+  function draw(now) {
+    if (!visible) return requestAnimationFrame(draw);
+    trail.unshift({x: pos.x, y: pos.y});
+    if (trail.length > 22) trail.length = 22;
+    ctx.clearRect(0, 0, W, H);
+    for (let i = trail.length - 1; i > 0; i--) {
+      const p = trail[i], k = i / trail.length;
+      const r = Math.round(139 + (62 - 139) * k), g = Math.round(124 + (231 - 124) * k), b = Math.round(255 + (255 - 255) * k);
+      ctx.fillStyle = `rgba(${r},${g},${b},${(1 - k) * 0.55})`;
+      ctx.beginPath(); ctx.arc(p.x + 3, p.y + 6, 7 * (1 - k) + 1, 0, 6.283); ctx.fill();
+    }
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i], k = (now - rp.t) / 600;
+      if (k >= 1) { ripples.splice(i, 1); continue; }
+      ctx.strokeStyle = `rgba(${rp.color},${(1 - k) * 0.9})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(rp.x, rp.y, 4 + 52 * ease(k), 0, 6.283); ctx.stroke();
+    }
+    place();
+    requestAnimationFrame(draw);
+  }
+
+  async function run() {
+    const dd = $('dd'), dd2 = $('dd2'), view = $('t-view'), fr = $('t-freeze'), row = $('t-row'), send = $('t-send'), grid = $('grid');
+    for (;;) {
+      dd.classList.remove('open'); dd2.classList.remove('open');
+      [view, fr, row].forEach(e => e.classList.remove('on'));
+      send.classList.remove('locked'); grid.classList.remove('frozen');
+      cap.classList.remove('show');
+      setHud('thinking', 'Thinking', '"Freeze the top row"');
+      pos.x = W * 0.72; pos.y = H * 0.78;
+      await sleep(1400);
+
+      setHud('', 'Acting', 'Step 1 / 3');
+      say(1, 'Open the View menu to find freeze options');
+      await glide(target('t-view'), 900); await click();
+      view.classList.add('on'); dd.classList.add('open');
+      await sleep(1500);
+
+      setHud('', 'Acting', 'Step 2 / 3');
+      say(2, 'Hover Freeze');
+      await glide(target('t-freeze'), 700); await click();
+      fr.classList.add('on'); dd2.classList.add('open');
+      await sleep(1100);
+
+      setHud('', 'Acting', 'Step 3 / 3');
+      say(3, 'Choose 1 row so the headers stay put');
+      await glide(target('t-row'), 700); await click();
+      row.classList.add('on');
+      await sleep(350);
+      dd.classList.remove('open'); dd2.classList.remove('open'); view.classList.remove('on');
+      grid.classList.add('frozen');
+      ripples.push({x: pos.x, y: pos.y, t: performance.now(), color: '75,227,161'});
+      setHud('done', 'Done', 'F9: your turn');
+      say('✓', "Done. Now it's your turn.", 'mint');
+      await sleep(2600);
+
+      setHud('thinking', 'Thinking', '"Send this to my manager"');
+      cap.classList.remove('show');
+      await sleep(1100);
+      setHud('', 'Acting', 'Step 1');
+      await glide(target('t-send'), 900);
+      send.classList.add('locked');
+      ripples.push({x: pos.x, y: pos.y, t: performance.now(), color: '255,181,71'});
+      setHud('stop', 'Handed over', 'Your call');
+      say('!', 'Stopped before Send. That one is yours.', 'amber');
+      await sleep(3600);
+    }
+  }
+
+  function still() {
+    size();
+    $('dd').classList.add('open'); $('t-view').classList.add('on');
+    setHud('', 'Acting', 'Step 1 / 3');
+    const t = target('t-view'); pos.x = t.x; pos.y = t.y;
+    cap.className = 'caption show'; capN.textContent = '1';
+    capT.textContent = 'Open the View menu to find freeze options';
+    place();
+  }
+
+  size();
+  addEventListener('resize', size);
+  if (reduce.matches) { still(); return; }
+  new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(stage);
+  requestAnimationFrame(draw);
+  run();
+})();
+</script>
+</body>
+</html>
