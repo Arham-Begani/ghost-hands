@@ -110,13 +110,14 @@ class Splash:
         # soft vignette behind the words for legibility on any app
         va = a * (1 - e)
         if va > 0.01:
-            rg = QRadialGradient(c, self.tw * 0.75 + s(160))
+            rw, rh = self.tw + s(320), self.th + s(200)
+            # gradient lives in the translated/scaled space, centred on the ellipse
+            rg = QRadialGradient(QPointF(0, 0), rw / 2)
             rg.setColorAt(0.0, QColor(10, 12, 20, round(150 * va)))
             rg.setColorAt(0.55, QColor(10, 12, 20, round(90 * va)))
             rg.setColorAt(1.0, QColor(10, 12, 20, 0))
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(rg)
-            rw, rh = self.tw + s(320), self.th + s(200)
             p.save()
             p.translate(c)
             p.scale(1.0, rh / rw)
