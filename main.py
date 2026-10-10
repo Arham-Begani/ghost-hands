@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import signal
 import sys
 
 # 1. DPI awareness before anything touches the screen (Qt, mss, pyautogui).
@@ -62,6 +63,7 @@ def main() -> int:
     from PyQt6.QtWidgets import QApplication
 
     from ghost.overlay.app import Overlay
+    signal.signal(signal.SIGINT, signal.SIG_DFL)          # Ctrl+C kills the overlay instantly
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     overlay = Overlay(to_overlay, to_brain)
