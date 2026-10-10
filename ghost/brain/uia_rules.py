@@ -16,7 +16,10 @@ _DANGER_RE = re.compile(rf"\b(?:{_DANGER})\b", re.I)
 _CAPTION_RE = re.compile(
     rf"(?:^|[.;:!]\s*)(?:now\s+|then\s+|and\s+)?(?:{_DANGER})\b"
     rf"|\b(?:click|press|tap|hit|select|choose|push|activate)\s+(?:on\s+)?(?:the\s+)?"
-    rf"[\"'“‘]?(?:{_DANGER})\b",
+    rf"[\"'“‘]?(?:{_DANGER})\b"
+    rf"|\b(?:point|move|hover|go|head|glide|rest)\w*\s+(?:the\s+pointer\s+)?(?:to|over|onto|on|at)\s+"
+    rf"(?:the\s+)?[\"'“‘]?(?:{_DANGER})\b"
+    rf"|\b(?:{_DANGER})\s+button\b",
     re.I,
 )
 _MAX_NAME = 40
@@ -45,10 +48,12 @@ def _clean(s) -> str:
 
 def _inspect(auto, x: int, y: int) -> tuple[bool, str]:
     c = auto.ControlFromPoint(int(x), int(y))
-    if c and c.ControlTypeName == "PaneControl" and not c.Name:
-        # Chromium/Electron switch on their accessibility tree on the first
-        # UIA query and answer with a bare pane; ask again once.
-        time.sleep(0.15)
+    for wait in (0.15, 0.35):
+        if not (c and c.ControlTypeName in ("PaneControl", "DocumentControl") and not c.Name):
+            break
+        # Chromium/Electron switch on their accessibility tree lazily after the
+        # first UIA query and answer with a bare pane meanwhile; ask again.
+        time.sleep(wait)
         c = auto.ControlFromPoint(int(x), int(y))
     if not c:
         return True, ""
@@ -66,7 +71,7 @@ def _inspect(auto, x: int, y: int) -> tuple[bool, str]:
             pass
     best = name if 0 < len(name) <= _MAX_NAME else ""
     p = c
-    for _ in range(2):
+    for _ in range(4):
         try:
             p = p.GetParentControl()
         except Exception:
