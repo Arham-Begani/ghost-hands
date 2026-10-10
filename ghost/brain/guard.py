@@ -12,12 +12,15 @@ distance of the next real move is measured from where WE put the cursor.
 """
 from __future__ import annotations
 
+import atexit
 import ctypes
 import ctypes.wintypes
+import json
 import logging
 import math
-import queue
-import re
+import os
+import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -36,159 +39,208 @@ class Aborted(Exception):
 # --------------------------------------------------------------------------
 # Hard stops
 # --------------------------------------------------------------------------
-_DANGER = (r"send|pay|pay now|purchase|buy|checkout|check out|delete|remove|submit|transfer|"
-           r"confirm order|place order|sign out|log ?out|unsubscribe|post")
-_DANGER_RE = re.compile(rf"\b(?:{_DANGER})\b", re.I)
-# caption text: an imperative that starts with the word, or "click/press ... <word>"
-_CAPTION_RE = re.compile(
-    rf"(?:^|[.;:!]\s*)(?:now\s+|then\s+|and\s+)?(?:{_DANGER})\b"
-    rf"|\b(?:click|press|tap|hit|select|choose|push|activate)\s+(?:on\s+)?(?:the\s+)?"
-    rf"[\"'“‘]?(?:{_DANGER})\b",
-    re.I,
+# UI Automation runs in a helper SUBPROCESS (ghost/brain/uia_host.py):
+# uiautomation/comtypes can segfault inside some apps (UWP Settings), and a
+# native crash in-process would take the whole app down. The rules themselves
+# live in uia_rules.py (shared with the host).
+from ghost.brain.uia_rules import (  # noqa: E402,F401  (re-exported)
+    _ANCESTOR_TYPES, _CAPTION_RE, _DANGER, _DANGER_RE, _MAX_NAME, _SKIP_SELF_TYPES,
+    _blocked, _clean, is_dangerous_text,
 )
-_MAX_NAME = 40
-_ANCESTOR_TYPES = {"ButtonControl", "MenuItemControl", "HyperlinkControl", "SplitButtonControl"}
-_SKIP_SELF_TYPES = {"WindowControl", "PaneControl", "DocumentControl", "TitleBarControl",
-                    "EditControl", "DataItemControl", "TableControl", "ListControl"}
+
 _UIA_TIMEOUT = 1.0
+_STARTUP_TIMEOUT = 3.0             # spawn + import uiautomation + COM init (~0.5-1.5 s)
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-def is_dangerous_text(s: str) -> bool:
-    """True for per-step captions like 'Click Send', 'Press Submit', 'Delete the row'.
-    Use on captions / target names only, never on the user's task text."""
-    return bool(s) and bool(_CAPTION_RE.search(s.strip()))
+class _HostDied(Exception):
+    pass
 
 
-def _blocked(name: str) -> bool:
-    return bool(name) and len(name) <= _MAX_NAME and bool(_DANGER_RE.search(name))
+class _UIAHost:
+    """Client for one long-lived uia_host process; respawns it when it dies."""
 
+    def __init__(self) -> None:
+        self._lock = threading.Lock()          # spawn / write
+        self._plock = threading.Lock()         # pending table
+        self._proc = None
+        self._ready = threading.Event()
+        self._pending: dict = {}
+        self._next = 1
+        self._timeouts = 0
 
-def _clean(s) -> str:
-    s = str(s or "")
-    s = re.sub(r"[‎‏‪-‮⁦-⁩]", "", s)     # bidi marks (Gmail)
-    return " ".join(s.split())
+    # -- process management -------------------------------------------------
+    def _spawn(self) -> None:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        self._ready = threading.Event()
+        self._proc = subprocess.Popen(
+            [sys.executable, "-m", "ghost.brain.uia_host"],
+            cwd=_ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, creationflags=flags, bufsize=0,
+        )
+        self._timeouts = 0
+        log.info("uia_host spawned pid=%s", self._proc.pid)
+        threading.Thread(target=self._reader, args=(self._proc, self._ready),
+                         daemon=True, name="guard-uia-reader").start()
 
+    def _ensure(self):
+        with self._lock:
+            if self._proc is None or self._proc.poll() is not None:
+                if self._proc is not None:
+                    log.warning("uia_host pid=%s gone (rc=%s); respawning",
+                                self._proc.pid, self._proc.returncode)
+                self._spawn()
+            return self._proc, self._ready
 
-def _inspect(auto, x: int, y: int) -> tuple[bool, str]:
-    c = auto.ControlFromPoint(int(x), int(y))
-    if c and c.ControlTypeName == "PaneControl" and not c.Name:
-        # Chromium/Electron switch on their accessibility tree on the first
-        # UIA query and answer with a bare pane; ask again once.
-        time.sleep(0.15)
-        c = auto.ControlFromPoint(int(x), int(y))
-    if not c:
-        return True, ""
-    ctype = c.ControlTypeName
-    name = _clean(c.Name)
-    cands: list[str] = []                      # names that may block
-    if ctype not in _SKIP_SELF_TYPES:
-        cands.append(name)
+    def _reader(self, proc, ready) -> None:
         try:
-            la = c.GetLegacyIAccessiblePattern()
-            cands.append(_clean(la.Name))
-            if ctype in _ANCESTOR_TYPES:
-                cands.append(_clean(la.Value))
-        except Exception:
+            for line in proc.stdout:
+                try:
+                    m = json.loads(line.decode("utf-8"))
+                except Exception:              # noqa: BLE001
+                    continue
+                if m.get("ready"):
+                    ready.set()
+                    continue
+                with self._plock:
+                    ent = self._pending.pop(m.get("id"), None)
+                if ent:
+                    ent[1]["m"] = m
+                    ent[0].set()
+        except Exception:                      # noqa: BLE001
             pass
-    best = name if 0 < len(name) <= _MAX_NAME else ""
-    p = c
-    for _ in range(2):
+        # end of stream: the host exited or crashed -> fail its calls still waiting
+        proc._gh_dead = True
+        ready.set()
+        self._discard(proc)
+        with self._plock:
+            dead = [k for k, v in self._pending.items() if v[1].get("proc") is proc]
+            ents = [self._pending.pop(k) for k in dead]
+        for ev, box in ents:
+            box["dead"] = True
+            ev.set()
+
+    def _discard(self, proc) -> None:
+        """proc is known dead/broken: forget it so the next call respawns
+        (poll() can still say 'running' for a moment after the pipe breaks)."""
+        with self._lock:
+            if self._proc is proc:
+                self._proc = None
         try:
-            p = p.GetParentControl()
-        except Exception:
-            p = None
-        if not p:
-            break
-        if p.ControlTypeName in _ANCESTOR_TYPES:
-            pn = _clean(p.Name)
-            cands.append(pn)
-            if not best and 0 < len(pn) <= _MAX_NAME:
-                best = pn
-    for n in cands:
-        if _blocked(n):
-            return False, n
-    return True, best
+            proc.kill()
+        except Exception:                      # noqa: BLE001
+            pass
 
+    def kill(self) -> None:
+        with self._lock:
+            p, self._proc = self._proc, None
+        if p is not None and p.poll() is None:
+            try:
+                p.stdin.close()
+            except Exception:                  # noqa: BLE001
+                pass
+            try:
+                p.wait(0.3)
+            except Exception:                  # noqa: BLE001
+                p.kill()
 
-# All UIA work runs on ONE long-lived thread. uiautomation keeps a process-wide
-# COM singleton; creating it on a short-lived thread that then uninitialises
-# COM leaves dangling pointers and the next call segfaults.
-_uia_q: "queue.Queue" = queue.Queue()
-_uia_thread = None
-_uia_lock = threading.Lock()
-
-
-def _uia_loop() -> None:
-    import uiautomation as auto
-    auto.InitializeUIAutomationInCurrentThread()       # never uninitialised
-    try:
-        auto.GetRootControl()                          # create the singleton here
-    except Exception as e:                             # noqa: BLE001
-        log.warning("uia init: %s", e)
-    while True:
-        fn, box, done = _uia_q.get()
+    # -- calls ----------------------------------------------------------------
+    def call(self, op: str, timeout: float = _UIA_TIMEOUT, **kw):
+        """Returns the host's result. Raises _HostDied, TimeoutError or RuntimeError."""
+        proc, ready = self._ensure()
+        if not ready.wait(_STARTUP_TIMEOUT):
+            if proc.poll() is not None:
+                self._discard(proc)
+                raise _HostDied(f"uia_host exited during start-up (rc={proc.returncode})")
+            raise TimeoutError("uia_host start-up timed out")
+        if getattr(proc, "_gh_dead", False):
+            raise _HostDied("uia_host exited during start-up")
+        ev, box = threading.Event(), {"proc": proc}
+        with self._plock:
+            rid = self._next
+            self._next += 1
+            self._pending[rid] = (ev, box)
+        msg = (json.dumps({"id": rid, "op": op, **kw}, ensure_ascii=True) + "\n").encode("utf-8")
         try:
-            box["r"] = fn(auto)
-        except Exception as e:                         # noqa: BLE001
-            box["e"] = e
-        done.set()
+            with self._lock:
+                proc.stdin.write(msg)
+                proc.stdin.flush()
+        except (OSError, ValueError) as e:
+            with self._plock:
+                self._pending.pop(rid, None)
+            self._discard(proc)
+            raise _HostDied(f"uia_host write failed: {e}") from None
+        if not ev.wait(timeout):
+            with self._plock:
+                self._pending.pop(rid, None)
+            if proc.poll() is not None or getattr(proc, "_gh_dead", False):
+                self._discard(proc)
+                raise _HostDied(f"uia_host died (rc={proc.returncode})")
+            self._timeouts += 1
+            if self._timeouts >= 2:            # wedged inside some app: start fresh
+                log.warning("uia_host timed out twice in a row; restarting it")
+                self.kill()
+            raise TimeoutError("UIA timed out")
+        self._timeouts = 0
+        if box.get("dead"):
+            raise _HostDied(f"uia_host died (rc={proc.poll()})")
+        m = box["m"]
+        if not m.get("ok"):
+            raise RuntimeError(m.get("e", "uia error"))
+        return m.get("r")
 
 
-def uia_call(fn, timeout: float = _UIA_TIMEOUT):
-    """Run fn(uiautomation_module) on the UIA thread. Returns (ok, result_or_exc)."""
-    global _uia_thread
-    with _uia_lock:
-        if _uia_thread is None:
-            _uia_thread = threading.Thread(target=_uia_loop, daemon=True, name="guard-uia")
-            _uia_thread.start()
-    box: dict = {}
-    done = threading.Event()
-    _uia_q.put((fn, box, done))
-    if not done.wait(timeout):
-        return False, TimeoutError("UIA timed out")
-    return ("r" in box), box.get("r", box.get("e"))
+_host = _UIAHost()
+atexit.register(_host.kill)
 
 
 def check(x: int, y: int) -> tuple[bool, str]:
     """(ok, name). ok=False means a hard stop: name is the offending label.
-    Never hangs (UIA runs on a helper thread, 1 s budget); fails open."""
-    ok, r = uia_call(lambda auto: _inspect(auto, x, y))
-    if ok:
-        return r
-    log.warning("guard.check(%s,%s) failed open: %s", x, y, r)
+    Never hangs (UIA runs in a helper process, 1 s budget); fails open.
+    If the helper crashes during the check it is respawned and the check retried once."""
+    err: Exception | None = None
+    for attempt in (0, 1):
+        try:
+            ok, name = _host.call("check", x=int(x), y=int(y))
+            return bool(ok), str(name or "")
+        except _HostDied as e:
+            err = e
+            if attempt == 0:
+                log.warning("guard.check(%s,%s): %s; respawning and retrying", x, y, e)
+                continue
+        except Exception as e:                 # noqa: BLE001
+            err = e
+        break
+    log.warning("guard.check(%s,%s) failed open: %s", x, y, err)
     return True, ""
 
 
 def focused_name() -> str:
     """Name of the focused UIA element ("" on any problem). Thread-safe."""
-    def fn(auto):
-        c = auto.GetFocusedControl()
-        return _clean(c.Name) if c else ""
-    ok, r = uia_call(fn)
-    return r if ok else ""
+    try:
+        return str(_host.call("focused_name") or "")
+    except Exception:                          # noqa: BLE001
+        return ""
 
 
 def focused_point() -> tuple[int, int] | None:
     """Where the caret lives: a point inside the focused element, if it's a
     sensible size (a text box, not a whole window). None otherwise."""
-    def fn(auto):
-        c = auto.GetFocusedControl()
-        if not c:
-            return None
-        r = c.BoundingRectangle
-        w, h = r.right - r.left, r.bottom - r.top
-        sw = ctypes.windll.user32.GetSystemMetrics(0)
-        sh = ctypes.windll.user32.GetSystemMetrics(1)
-        if w <= 4 or h <= 4 or w > sw * 0.8 or h > sh * 0.5:
-            return None
-        return (r.left + min(48, w // 4), r.top + h // 2)
-    ok, r = uia_call(fn)
-    return r if ok else None
+    try:
+        r = _host.call("focused_point")
+    except Exception:                          # noqa: BLE001
+        return None
+    return (int(r[0]), int(r[1])) if r else None
 
 
 def warm() -> None:
-    """Start the UIA thread and pay its ~0.5 s init cost off the critical path."""
-    threading.Thread(target=lambda: uia_call(lambda auto: None, 3.0), daemon=True).start()
+    """Spawn the UIA helper and pay its start-up cost off the critical path."""
+    def _w():
+        try:
+            _host.call("ping", timeout=_STARTUP_TIMEOUT)
+        except Exception as e:                 # noqa: BLE001
+            log.warning("guard.warm: %s", e)
+    threading.Thread(target=_w, daemon=True, name="guard-warm").start()
 
 
 # --------------------------------------------------------------------------
